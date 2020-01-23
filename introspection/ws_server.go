@@ -15,8 +15,8 @@ import (
 var logger = logging.Logger("introspection-server")
 var upgrader = websocket.Upgrader{}
 
-// StartServer starts the ws introspection server with the given introspector & returns a handle that can be used to shut it down
-func StartServer(ctx context.Context, addr string, introspector coreit.Introspector) func() error {
+// StartServer starts the ws introspection server with the given introspector
+func StartServer(addr string, introspector coreit.Introspector) func() error {
 	// register handlers on a muxed router
 	r := mux.NewRouter()
 
@@ -41,13 +41,18 @@ func StartServer(ctx context.Context, addr string, introspector coreit.Introspec
 	serverInstance := http.Server{
 		Addr: addr,
 	}
-	go serverInstance.ListenAndServe()
 
-	logger.Infof("server started, listening on %s", addr)
+	// start server
+	go func() {
+		if err := serverInstance.ListenAndServe(); err != http.ErrServerClosed {
+			logger.Errorf("failed to start server, err=%s", err)
+		}
+	}()
 
-	// return shutdown func
+	logger.Infof("server starting, listening on %s", addr)
+
 	return func() error {
-		shutdownCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		return serverInstance.Shutdown(shutdownCtx)
 	}
