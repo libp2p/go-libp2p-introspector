@@ -6,7 +6,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	logging "github.com/ipfs/go-log"
-	coreit "github.com/libp2p/go-libp2p-core/introspection"
+	"github.com/libp2p/go-libp2p-core/introspect"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -16,12 +16,12 @@ var logger = logging.Logger("introspection-server")
 var upgrader = websocket.Upgrader{}
 
 // StartServer starts the ws introspection server with the given introspector
-func StartServer(addr string, introspector coreit.Introspector) func() error {
+func StartServer(introspector introspect.Introspector) func() error {
 	// register handlers on a muxed router
 	r := mux.NewRouter()
 
-	// introspection handler
-	r.HandleFunc("/introspection", toHttpHandler(introspector))
+	// introspect handler
+	r.HandleFunc("/introspect", toHttpHandler(introspector))
 
 	// Register pprof handlers
 	r.HandleFunc("/debug/pprof/", pprof.Index)
@@ -39,7 +39,7 @@ func StartServer(addr string, introspector coreit.Introspector) func() error {
 
 	// start server
 	serverInstance := http.Server{
-		Addr: addr,
+		Addr: introspector.ListenAddress(),
 	}
 
 	// start server
@@ -49,7 +49,7 @@ func StartServer(addr string, introspector coreit.Introspector) func() error {
 		}
 	}()
 
-	logger.Infof("server starting, listening on %s", addr)
+	logger.Infof("server starting, listening on %s", introspector.ListenAddress())
 
 	return func() error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -58,7 +58,7 @@ func StartServer(addr string, introspector coreit.Introspector) func() error {
 	}
 }
 
-func toHttpHandler(introspector coreit.Introspector) http.HandlerFunc {
+func toHttpHandler(introspector introspect.Introspector) http.HandlerFunc {
 	return func(w http.ResponseWriter, rq *http.Request) {
 		upgrader.CheckOrigin = func(rq *http.Request) bool { return true }
 		wsConn, err := upgrader.Upgrade(w, rq, nil)

@@ -3,26 +3,27 @@ package introspection
 import (
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/imdario/mergo"
-	coreit "github.com/libp2p/go-libp2p-core/introspection"
+	"github.com/libp2p/go-libp2p-core/introspect"
 	"github.com/pkg/errors"
 	"sync"
 	"time"
 )
 
-var _ coreit.Introspector = (*DefaultIntrospector)(nil)
+var _ introspect.Introspector = (*DefaultIntrospector)(nil)
 
 // DefaultIntrospector is a registry of subsystem data/metrics providers and also allows
 // clients to inspect the system state by calling all the providers registered with it
 type DefaultIntrospector struct {
 	treeMu sync.RWMutex
-	tree   *coreit.ProvidersTree
+	tree   *introspect.ProvidersMap
+	addr   string
 }
 
 func NewDefaultIntrospector() *DefaultIntrospector {
-	return &DefaultIntrospector{tree: &coreit.ProvidersTree{}}
+	return &DefaultIntrospector{tree: &introspect.ProvidersMap{}}
 }
 
-func (d *DefaultIntrospector) RegisterProviders(provs *coreit.ProvidersTree) error {
+func (d *DefaultIntrospector) RegisterProviders(provs *introspect.ProvidersMap) error {
 	d.treeMu.Lock()
 	defer d.treeMu.Unlock()
 
@@ -33,22 +34,26 @@ func (d *DefaultIntrospector) RegisterProviders(provs *coreit.ProvidersTree) err
 	return nil
 }
 
-func (d *DefaultIntrospector) FetchCurrentState() (*coreit.State, error) {
+// TODO Get this to work
+func (d *DefaultIntrospector) ListenAddress() string {
+	return ""
+}
+
+func (d *DefaultIntrospector) FetchCurrentState() (*introspect.State, error) {
 	d.treeMu.RLock()
 	defer d.treeMu.RUnlock()
 
-	s := &coreit.State{}
+	s := &introspect.State{}
 
 	// subsystems
-	s.Subsystems = &coreit.Subsystems{}
+	s.Subsystems = &introspect.Subsystems{}
 
 	// version
-	s.Version = &coreit.Version{Number: coreit.ProtoVersion}
+	s.Version = &introspect.Version{Number: introspect.ProtoVersion}
 
 	// runtime
-	// TODO Figure out how & where a runtime provider would be injected
 	if d.tree.Runtime != nil {
-		r, err := d.tree.Runtime.Get()
+		r, err := d.tree.Runtime()
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to fetch runtime info")
 		}
@@ -60,29 +65,12 @@ func (d *DefaultIntrospector) FetchCurrentState() (*coreit.State, error) {
 	// TODO Figure out the other two timestamp fields
 
 	// connections
-	if d.tree.Conn.List != nil {
-		conns, err := d.tree.Conn.List()
+	if d.tree.Connection != nil {
+		conns, err := d.tree.Connection(introspect.ConnectionQueryInput{Type: introspect.ConnListQueryTypeAll, StreamOutputType: introspect.QueryOutputTypeFull})
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to fetch connection list")
+			return nil, errors.Wrap(err, "failed to fetch connections")
 		}
-
 		s.Subsystems.Connections = conns
-
-		// streams
-		if d.tree.Stream.List != nil {
-			for _, c := range conns {
-				s, err := d.tree.Stream.List(coreit.StreamListQuery{
-					Type:   coreit.StreamListQueryTypeConn,
-					ConnID: coreit.ConnID(c.Id),
-				})
-				if err != nil {
-					return nil, errors.Wrap(err, "failed to fetch stream list")
-				}
-
-				c.Streams = &coreit.StreamList{}
-				c.Streams.Streams = append(c.Streams.Streams, s...)
-			}
-		}
 	}
 
 	return nil, nil
