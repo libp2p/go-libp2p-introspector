@@ -33,10 +33,7 @@ func StartServer(addr string, introspector introspect.Introspector) func() error
 	r.Handle("/debug/pprof/heap", pprof.Handler("heap"))
 	r.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 	r.Handle("/debug/pprof/block", pprof.Handler("block"))
-
-	// register router with the http handler
-	http.Handle("/", r)
-
+	
 	// start server
 	serverInstance := http.Server{
 		Addr: addr,
