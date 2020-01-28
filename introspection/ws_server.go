@@ -3,12 +3,10 @@ package introspection
 import (
 	"context"
 	"github.com/golang/protobuf/proto"
-	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p-core/introspect"
 	"net/http"
-	"net/http/pprof"
 	"time"
 )
 
@@ -17,22 +15,8 @@ var upgrader = websocket.Upgrader{}
 
 // StartServer starts the ws introspection server with the given introspector
 func StartServer(introspector introspect.Introspector) func() error {
-	// register handlers on a muxed router
-	r := mux.NewRouter()
-
 	// introspect handler
-	r.HandleFunc("/introspect", toHttpHandler(introspector))
-
-	// Register pprof handlers
-	r.HandleFunc("/debug/pprof/", pprof.Index)
-	r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	r.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-
-	r.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
-	r.Handle("/debug/pprof/heap", pprof.Handler("heap"))
-	r.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
-	r.Handle("/debug/pprof/block", pprof.Handler("block"))
+	http.HandleFunc("/introspect", toHttpHandler(introspector))
 	
 	// start server
 	serverInstance := http.Server{
