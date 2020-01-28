@@ -19,8 +19,8 @@ type DefaultIntrospector struct {
 	addr   string
 }
 
-func NewDefaultIntrospector() *DefaultIntrospector {
-	return &DefaultIntrospector{tree: &introspect.ProvidersMap{}}
+func NewDefaultIntrospector(listenAddr string) *DefaultIntrospector {
+	return &DefaultIntrospector{tree: &introspect.ProvidersMap{},addr:listenAddr}
 }
 
 func (d *DefaultIntrospector) RegisterProviders(provs *introspect.ProvidersMap) error {
@@ -34,9 +34,8 @@ func (d *DefaultIntrospector) RegisterProviders(provs *introspect.ProvidersMap) 
 	return nil
 }
 
-// TODO Get this to work
 func (d *DefaultIntrospector) ListenAddress() string {
-	return ""
+	return d.addr
 }
 
 func (d *DefaultIntrospector) FetchCurrentState() (*introspect.State, error) {
