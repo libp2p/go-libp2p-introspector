@@ -20,7 +20,7 @@ type DefaultIntrospector struct {
 }
 
 func NewDefaultIntrospector(listenAddr string) *DefaultIntrospector {
-	return &DefaultIntrospector{tree: &introspect.ProvidersMap{},addr:listenAddr}
+	return &DefaultIntrospector{tree: &introspect.ProvidersMap{}, addr: listenAddr}
 }
 
 func (d *DefaultIntrospector) RegisterProviders(provs *introspect.ProvidersMap) error {
@@ -72,5 +72,14 @@ func (d *DefaultIntrospector) FetchCurrentState() (*introspect.State, error) {
 		s.Subsystems.Connections = conns
 	}
 
-	return nil, nil
+	// traffic
+	if d.tree.Traffic != nil {
+		tr, err := d.tree.Traffic()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to fetch traffic")
+		}
+		s.Traffic = tr
+	}
+
+	return s, nil
 }
