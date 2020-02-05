@@ -1,9 +1,10 @@
 package introspection
 
 import (
-	"github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/gogo/protobuf/types"
 	"github.com/imdario/mergo"
 	"github.com/libp2p/go-libp2p-core/introspect"
+	introspectpb "github.com/libp2p/go-libp2p-core/introspect/pb"
 	"github.com/pkg/errors"
 	"sync"
 	"time"
@@ -15,15 +16,15 @@ var _ introspect.Introspector = (*DefaultIntrospector)(nil)
 // clients to inspect the system state by calling all the providers registered with it
 type DefaultIntrospector struct {
 	treeMu sync.RWMutex
-	tree   *introspect.ProvidersMap
-	addr   string
+	tree   *introspect.DataProviders
+	addr   []string
 }
 
-func NewDefaultIntrospector(listenAddr string) *DefaultIntrospector {
-	return &DefaultIntrospector{tree: &introspect.ProvidersMap{}, addr: listenAddr}
+func NewDefaultIntrospector(listenAddr []string) *DefaultIntrospector {
+	return &DefaultIntrospector{tree: &introspect.DataProviders{}, addr: listenAddr}
 }
 
-func (d *DefaultIntrospector) RegisterProviders(provs *introspect.ProvidersMap) error {
+func (d *DefaultIntrospector) RegisterDataProviders(provs *introspect.DataProviders) error {
 	d.treeMu.Lock()
 	defer d.treeMu.Unlock()
 
@@ -34,21 +35,21 @@ func (d *DefaultIntrospector) RegisterProviders(provs *introspect.ProvidersMap) 
 	return nil
 }
 
-func (d *DefaultIntrospector) ListenAddress() string {
+func (d *DefaultIntrospector) ListenAddrs() []string {
 	return d.addr
 }
 
-func (d *DefaultIntrospector) FetchCurrentState() (*introspect.State, error) {
+func (d *DefaultIntrospector) FetchFullState() (*introspectpb.State, error) {
 	d.treeMu.RLock()
 	defer d.treeMu.RUnlock()
 
-	s := &introspect.State{}
+	s := &introspectpb.State{}
 
 	// subsystems
-	s.Subsystems = &introspect.Subsystems{}
+	s.Subsystems = &introspectpb.Subsystems{}
 
 	// version
-	s.Version = &introspect.Version{Number: introspect.ProtoVersion}
+	s.Version = &introspectpb.Version{Number: introspect.ProtoVersion}
 
 	// runtime
 	if d.tree.Runtime != nil {
@@ -60,14 +61,29 @@ func (d *DefaultIntrospector) FetchCurrentState() (*introspect.State, error) {
 	}
 
 	// timestamps
-	s.InstantTs = &timestamp.Timestamp{Seconds: time.Now().Unix()}
+	s.InstantTs = &types.Timestamp{Seconds: time.Now().Unix()}
 	// TODO Figure out the other two timestamp fields
 
 	// connections
 	if d.tree.Connection != nil {
-		conns, err := d.tree.Connection(introspect.ConnectionQueryInput{Type: introspect.ConnListQueryTypeAll, StreamOutputType: introspect.QueryOutputTypeFull})
+		conns, err := d.tree.Connection(introspect.ConnectionQueryParams{Output: introspect.QueryOutputFull})
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to fetch connections")
+		}
+		// resolve streams on connection
+		if d.tree.Stream != nil {
+			for _, c := range conns {
+				var sids []introspect.StreamID
+				for _, s := range c.Streams.StreamIds {
+					sids = append(sids, introspect.StreamID(s))
+				}
+
+				sl, err := d.tree.Stream(introspect.StreamQueryParams{introspect.QueryOutputFull, sids})
+				if err != nil {
+					return nil, errors.Wrap(err, "failed to fetch streams for connection")
+				}
+				c.Streams = sl
+			}
 		}
 		s.Subsystems.Connections = conns
 	}

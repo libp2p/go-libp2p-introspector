@@ -2,7 +2,7 @@ package introspection
 
 import (
 	"context"
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	"github.com/gorilla/websocket"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p-core/introspect"
@@ -17,10 +17,11 @@ var upgrader = websocket.Upgrader{}
 func StartServer(introspector introspect.Introspector) func() error {
 	// introspect handler
 	http.HandleFunc("/introspect", toHttpHandler(introspector))
-	
+
 	// start server
 	serverInstance := http.Server{
-		Addr: introspector.ListenAddress(),
+		// TODO Need a better strategy to select an address
+		Addr: introspector.ListenAddrs()[0],
 	}
 
 	// start server
@@ -30,7 +31,7 @@ func StartServer(introspector introspect.Introspector) func() error {
 		}
 	}()
 
-	logger.Infof("server starting, listening on %s", introspector.ListenAddress())
+	logger.Infof("server starting, listening on %s", introspector.ListenAddrs()[0])
 
 	return func() error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -60,7 +61,7 @@ func toHttpHandler(introspector introspect.Introspector) http.HandlerFunc {
 			logger.Debugf("received message from ws connection, type: %d. recv: %s", mt, message)
 
 			// fetch the current state & marshal to bytes
-			state, err := introspector.FetchCurrentState()
+			state, err := introspector.FetchFullState()
 			if err != nil {
 				logger.Errorf("failed to fetch current state in introspector, err=%s", err)
 				return
