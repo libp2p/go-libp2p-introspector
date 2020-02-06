@@ -1,13 +1,14 @@
 package introspection
 
 import (
+	"sync"
+	"time"
+
 	"github.com/gogo/protobuf/types"
 	"github.com/imdario/mergo"
 	"github.com/libp2p/go-libp2p-core/introspect"
 	introspectpb "github.com/libp2p/go-libp2p-core/introspect/pb"
 	"github.com/pkg/errors"
-	"sync"
-	"time"
 )
 
 var _ introspect.Introspector = (*DefaultIntrospector)(nil)
@@ -15,13 +16,13 @@ var _ introspect.Introspector = (*DefaultIntrospector)(nil)
 // DefaultIntrospector is a registry of subsystem data/metrics providers and also allows
 // clients to inspect the system state by calling all the providers registered with it
 type DefaultIntrospector struct {
-	treeMu sync.RWMutex
-	tree   *introspect.DataProviders
-	addr   []string
+	treeMu     sync.RWMutex
+	tree       *introspect.DataProviders
+	listenAddr []string
 }
 
 func NewDefaultIntrospector(listenAddr []string) *DefaultIntrospector {
-	return &DefaultIntrospector{tree: &introspect.DataProviders{}, addr: listenAddr}
+	return &DefaultIntrospector{tree: &introspect.DataProviders{}, listenAddr: listenAddr}
 }
 
 func (d *DefaultIntrospector) RegisterDataProviders(provs *introspect.DataProviders) error {
@@ -36,7 +37,7 @@ func (d *DefaultIntrospector) RegisterDataProviders(provs *introspect.DataProvid
 }
 
 func (d *DefaultIntrospector) ListenAddrs() []string {
-	return d.addr
+	return d.listenAddr
 }
 
 func (d *DefaultIntrospector) FetchFullState() (*introspectpb.State, error) {
