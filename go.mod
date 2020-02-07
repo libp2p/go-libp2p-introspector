@@ -1,4 +1,4 @@
-module github.com/libp2p/go-libp2p-introspection
+module github.com/libp2p/go-libp2p-introspector
 
 go 1.13
 
