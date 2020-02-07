@@ -1,31 +1,31 @@
 package introspection
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p-core/introspection"
+	introspection_pb "github.com/libp2p/go-libp2p-core/introspection/pb"
+
 	"github.com/gogo/protobuf/types"
 	"github.com/imdario/mergo"
-	"github.com/libp2p/go-libp2p-core/introspect"
-	introspectpb "github.com/libp2p/go-libp2p-core/introspect/pb"
-	"github.com/pkg/errors"
 )
 
-var _ introspect.Introspector = (*DefaultIntrospector)(nil)
+var _ introspection.Introspector = (*DefaultIntrospector)(nil)
 
 // DefaultIntrospector is a registry of subsystem data/metrics providers and also allows
 // clients to inspect the system state by calling all the providers registered with it
 type DefaultIntrospector struct {
-	treeMu     sync.RWMutex
-	tree       *introspect.DataProviders
-	listenAddr []string
+	treeMu sync.RWMutex
+	tree   *introspection.DataProviders
 }
 
-func NewDefaultIntrospector(listenAddr []string) *DefaultIntrospector {
-	return &DefaultIntrospector{tree: &introspect.DataProviders{}, listenAddr: listenAddr}
+func NewDefaultIntrospector() *DefaultIntrospector {
+	return &DefaultIntrospector{tree: &introspection.DataProviders{}}
 }
 
-func (d *DefaultIntrospector) RegisterDataProviders(provs *introspect.DataProviders) error {
+func (d *DefaultIntrospector) RegisterDataProviders(provs *introspection.DataProviders) error {
 	d.treeMu.Lock()
 	defer d.treeMu.Unlock()
 
@@ -36,27 +36,23 @@ func (d *DefaultIntrospector) RegisterDataProviders(provs *introspect.DataProvid
 	return nil
 }
 
-func (d *DefaultIntrospector) ListenAddrs() []string {
-	return d.listenAddr
-}
-
-func (d *DefaultIntrospector) FetchFullState() (*introspectpb.State, error) {
+func (d *DefaultIntrospector) FetchFullState() (*introspection_pb.State, error) {
 	d.treeMu.RLock()
 	defer d.treeMu.RUnlock()
 
-	s := &introspectpb.State{}
+	s := &introspection_pb.State{}
 
 	// subsystems
-	s.Subsystems = &introspectpb.Subsystems{}
+	s.Subsystems = &introspection_pb.Subsystems{}
 
 	// version
-	s.Version = &introspectpb.Version{Number: introspect.ProtoVersion}
+	s.Version = &introspection_pb.Version{Number: introspection.ProtoVersion}
 
 	// runtime
 	if d.tree.Runtime != nil {
 		r, err := d.tree.Runtime()
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to fetch runtime info")
+			return nil, fmt.Errorf("failed to fetch runtime info: %w", err)
 		}
 		s.Runtime = r
 	}
@@ -67,21 +63,21 @@ func (d *DefaultIntrospector) FetchFullState() (*introspectpb.State, error) {
 
 	// connections
 	if d.tree.Connection != nil {
-		conns, err := d.tree.Connection(introspect.ConnectionQueryParams{Output: introspect.QueryOutputFull})
+		conns, err := d.tree.Connection(introspection.ConnectionQueryParams{Output: introspection.QueryOutputFull})
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to fetch connections")
+			return nil, fmt.Errorf("failed to fetch connections: %w", err)
 		}
 		// resolve streams on connection
 		if d.tree.Stream != nil {
 			for _, c := range conns {
-				var sids []introspect.StreamID
+				var sids []introspection.StreamID
 				for _, s := range c.Streams.StreamIds {
-					sids = append(sids, introspect.StreamID(s))
+					sids = append(sids, introspection.StreamID(s))
 				}
 
-				sl, err := d.tree.Stream(introspect.StreamQueryParams{introspect.QueryOutputFull, sids})
+				sl, err := d.tree.Stream(introspection.StreamQueryParams{introspection.QueryOutputFull, sids})
 				if err != nil {
-					return nil, errors.Wrap(err, "failed to fetch streams for connection")
+					return nil, fmt.Errorf("failed to fetch streams for connection: %w", err)
 				}
 				c.Streams = sl
 			}
@@ -93,7 +89,7 @@ func (d *DefaultIntrospector) FetchFullState() (*introspectpb.State, error) {
 	if d.tree.Traffic != nil {
 		tr, err := d.tree.Traffic()
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to fetch traffic")
+			return nil, fmt.Errorf("failed to fetch traffic: %w", err)
 		}
 		s.Traffic = tr
 	}
