@@ -28,8 +28,19 @@ type WsServer struct {
 	closeWg   sync.WaitGroup
 }
 
+var _ introspection.Endpoint = (*WsServer)(nil)
+
 type WsServerConfig struct {
 	ListenAddrs []string
+}
+
+// WsServerWithConfig returns a function compatible with the
+// libp2p.Introspection constructor option, which when called, creates a
+// WsServer with the supplied configuration.
+func WsServerWithConfig(config *WsServerConfig) func(i introspection.Introspector) (introspection.Endpoint, error) {
+	return func(i introspection.Introspector) (introspection.Endpoint, error) {
+		return NewWsServer(i, config)
+	}
 }
 
 // NewWsServer creates a WebSockets server to serve introspection data.
