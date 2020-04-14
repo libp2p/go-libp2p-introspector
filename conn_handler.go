@@ -181,12 +181,9 @@ func (ch *connHandler) fetchAndSendState() error {
 		Message: &introspection_pb.ProtocolDataPacket_State{State: st},
 	}
 
-	ch.connWriteLk.Lock()
 	if err := ch.sendMessage(stMsg); err != nil {
-		ch.connWriteLk.Unlock()
 		return fmt.Errorf("failed to send state message to client, err=%s", err)
 	}
-	ch.connWriteLk.Unlock()
 
 	return nil
 }
@@ -205,22 +202,21 @@ func (ch *connHandler) fetchAndSendRuntime() error {
 		Message: &introspection_pb.ProtocolDataPacket_Runtime{Runtime: rt},
 	}
 
-	ch.connWriteLk.Lock()
 	if err := ch.sendMessage(rtMsg); err != nil {
-		ch.connWriteLk.Unlock()
 		return fmt.Errorf("failed to send runtime message, err=%s", err)
 	}
-	ch.connWriteLk.Unlock()
 
 	return nil
 }
 
-// locking is to be handled by the caller
 func (ch *connHandler) sendMessage(msg proto.Message) error {
 	bz, err := proto.Marshal(msg)
 	if err != nil {
 		return err
 	}
+
+	ch.connWriteLk.Lock()
+	defer ch.connWriteLk.Unlock()
 
 	ch.conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 	if err = ch.conn.WriteMessage(websocket.BinaryMessage, bz); err != nil {
