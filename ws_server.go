@@ -6,14 +6,11 @@ import (
 	"net"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/libp2p/go-libp2p-core/introspection"
 
-	logging "github.com/ipfs/go-log"
-
-	"github.com/gogo/protobuf/proto"
 	"github.com/gorilla/websocket"
+	logging "github.com/ipfs/go-log"
 )
 
 var logger = logging.Logger("introspection-server")
@@ -79,10 +76,10 @@ func (s *WsServer) Start() error {
 
 		s.closeWg.Add(1)
 		go func() {
+			defer s.closeWg.Done()
 			if err := s.server.Serve(l); err != http.ErrServerClosed {
 				logger.Errorf("failed to start WS server, err: %s", err)
 			}
-			s.closeWg.Done()
 		}()
 
 		s.listeners = append(s.listeners, l)
@@ -101,10 +98,11 @@ func (s *WsServer) Close() error {
 		return nil
 	}
 
-	// Close the server, which in turn closes all listenerse.
+	// Close the server, which in turn closes all listeners.
 	if err := s.server.Close(); err != nil {
 		return err
 	}
+	s.closeWg.Wait()
 
 	s.listeners = nil
 	return nil
@@ -132,40 +130,8 @@ func wsUpgrader(introspector introspection.Introspector) http.HandlerFunc {
 		}
 		defer wsConn.Close()
 
-		for {
-			// wait for client to ask for the state
-			mt, message, err := wsConn.ReadMessage()
-			switch err.(type) {
-			case nil:
-			case *websocket.CloseError:
-				logger.Warnf("connection closed: %s", err)
-				return
-			default:
-				logger.Errorf("failed to read message from ws connection, err: %s", err)
-				return
-			}
-
-			logger.Debugf("received message from ws connection, type: %d. recv: %s", mt, message)
-
-			// fetch the current state & marshal to bytes
-			state, err := introspector.FetchFullState()
-			if err != nil {
-				logger.Errorf("failed to fetch current state in introspector, err: %s", err)
-				return
-			}
-
-			bz, err := proto.Marshal(state)
-			if err != nil {
-				logger.Errorf("failed to marshal introspector state, err: %s", err)
-				return
-			}
-
-			// send the response
-			wsConn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err = wsConn.WriteMessage(websocket.BinaryMessage, bz); err != nil {
-				logger.Errorf("failed to write response to ws connection, err: %s", err)
-				return
-			}
-		}
+		ch := &connHandler{conn: wsConn, introspector: introspector}
+		// will block till run returns
+		ch.run()
 	}
 }

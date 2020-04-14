@@ -36,6 +36,17 @@ func (d *DefaultIntrospector) RegisterDataProviders(provs *introspection.DataPro
 	return nil
 }
 
+func (d *DefaultIntrospector) FetchRuntime() (*introspection_pb.Runtime, error) {
+	var err error
+	r := &introspection_pb.Runtime{}
+	if d.tree.Runtime != nil {
+		if r, err = d.tree.Runtime(); err != nil {
+			return nil, fmt.Errorf("failed to fetch runtime info, err=%s", err)
+		}
+	}
+	return r, err
+}
+
 func (d *DefaultIntrospector) FetchFullState() (*introspection_pb.State, error) {
 	d.treeMu.RLock()
 	defer d.treeMu.RUnlock()
@@ -44,18 +55,6 @@ func (d *DefaultIntrospector) FetchFullState() (*introspection_pb.State, error) 
 
 	// subsystems
 	s.Subsystems = &introspection_pb.Subsystems{}
-
-	// version
-	s.Version = &introspection_pb.Version{Number: introspection.ProtoVersion}
-
-	// runtime
-	if d.tree.Runtime != nil {
-		r, err := d.tree.Runtime()
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch runtime info: %w", err)
-		}
-		s.Runtime = r
-	}
 
 	// timestamps
 	s.InstantTs = &types.Timestamp{Seconds: time.Now().Unix()}
