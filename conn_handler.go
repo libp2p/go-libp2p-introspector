@@ -31,8 +31,11 @@ type connHandler struct {
 	conn         *websocket.Conn
 	introspector introspection.Introspector
 
-	lk sync.RWMutex
-	es emitterState
+	emitterStateLk sync.RWMutex
+	es             emitterState
+
+	// https://godoc.org/github.com/gorilla/websocket#hdr-Concurrency
+	connWriteLk sync.Mutex
 
 	wg sync.WaitGroup
 }
@@ -73,9 +76,9 @@ func (ch *connHandler) periodicStatePush() {
 		select {
 		case <-stateMessageTickr.C:
 			var shouldSend bool
-			ch.lk.RLock()
+			ch.emitterStateLk.RLock()
 			shouldSend = (ch.es == running)
-			ch.lk.RUnlock()
+			ch.emitterStateLk.RUnlock()
 
 			if shouldSend {
 				if err := ch.fetchAndSendState(); err != nil {
@@ -133,15 +136,15 @@ func (ch *connHandler) handleIncoming() {
 					}
 				}
 			case introspection_pb.ClientSignal_PAUSE_PUSH_EMITTER:
-				ch.lk.Lock()
+				ch.emitterStateLk.Lock()
 				ch.es = paused
-				ch.lk.Unlock()
+				ch.emitterStateLk.Unlock()
 			case introspection_pb.ClientSignal_UNPAUSE_PUSH_EMITTER:
 				var wasPaused bool
-				ch.lk.Lock()
+				ch.emitterStateLk.Lock()
 				wasPaused = (ch.es == paused)
 				ch.es = running
-				ch.lk.Unlock()
+				ch.emitterStateLk.Unlock()
 
 				// send a state message as emitter was paused earlier
 				if wasPaused {
@@ -178,9 +181,12 @@ func (ch *connHandler) fetchAndSendState() error {
 		Message: &introspection_pb.ProtocolDataPacket_State{State: st},
 	}
 
+	ch.connWriteLk.Lock()
 	if err := ch.sendMessage(stMsg); err != nil {
+		ch.connWriteLk.Unlock()
 		return fmt.Errorf("failed to send state message to client, err=%s", err)
 	}
+	ch.connWriteLk.Unlock()
 
 	return nil
 }
@@ -199,13 +205,17 @@ func (ch *connHandler) fetchAndSendRuntime() error {
 		Message: &introspection_pb.ProtocolDataPacket_Runtime{Runtime: rt},
 	}
 
+	ch.connWriteLk.Lock()
 	if err := ch.sendMessage(rtMsg); err != nil {
+		ch.connWriteLk.Unlock()
 		return fmt.Errorf("failed to send runtime message, err=%s", err)
 	}
+	ch.connWriteLk.Unlock()
 
 	return nil
 }
 
+// locking is to be handled by the caller
 func (ch *connHandler) sendMessage(msg proto.Message) error {
 	bz, err := proto.Marshal(msg)
 	if err != nil {
