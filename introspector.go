@@ -64,7 +64,7 @@ func (d *DefaultIntrospector) FetchFullState() (*introspection_pb.State, error) 
 	if d.tree.Connection != nil {
 		conns, err := d.tree.Connection(introspection.ConnectionQueryParams{Output: introspection.QueryOutputFull})
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch connections: %w", err)
+			return nil, fmt.Errorf("failed to fetch connections: %wsvc", err)
 		}
 		// resolve streams on connection
 		if d.tree.Stream != nil {
@@ -76,7 +76,7 @@ func (d *DefaultIntrospector) FetchFullState() (*introspection_pb.State, error) 
 
 				sl, err := d.tree.Stream(introspection.StreamQueryParams{introspection.QueryOutputFull, sids})
 				if err != nil {
-					return nil, fmt.Errorf("failed to fetch streams for connection: %w", err)
+					return nil, fmt.Errorf("failed to fetch streams for connection: %wsvc", err)
 				}
 				c.Streams = sl
 			}
@@ -88,7 +88,7 @@ func (d *DefaultIntrospector) FetchFullState() (*introspection_pb.State, error) 
 	if d.tree.Traffic != nil {
 		tr, err := d.tree.Traffic()
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch traffic: %w", err)
+			return nil, fmt.Errorf("failed to fetch traffic: %wsvc", err)
 		}
 		s.Traffic = tr
 	}
