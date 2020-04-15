@@ -83,7 +83,6 @@ func TestConnHandlerSignalling(t *testing.T) {
 		return len(server.connHandlers) == 2
 	}, 10*time.Second, 1*time.Second)
 
-	require.NotEqual(t, ch, ch2)
 	require.True(t, ch2.isRunning())
 
 	// changing state of ch2 does not change state for ch1
