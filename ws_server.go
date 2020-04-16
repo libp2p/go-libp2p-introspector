@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/libp2p/go-eventbus"
 
 	"net"
 	"net/http"
@@ -16,8 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/introspection"
 	introspection_pb "github.com/libp2p/go-libp2p-core/introspection/pb"
 	"github.com/libp2p/go-libp2p-core/peer"
-
-	"github.com/libp2p/go-eventbus"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
@@ -103,15 +102,15 @@ type WsServerConfig struct {
 // WsServerWithConfig returns a function compatible with the
 // libp2p.Introspection constructor option, which when called, creates a
 // WsServer with the supplied configuration.
-func WsServerWithConfig(config *WsServerConfig) func(i introspection.Introspector, b event.Bus) (introspection.Endpoint, error) {
-	return func(i introspection.Introspector, b event.Bus) (introspection.Endpoint, error) {
-		return NewWsServer(i, b, config)
+func WsServerWithConfig(config *WsServerConfig) func(i introspection.Introspector) (introspection.Endpoint, error) {
+	return func(i introspection.Introspector) (introspection.Endpoint, error) {
+		return NewWsServer(i, config)
 	}
 }
 
 // NewWsServer creates a WebSockets server to serve introspection data.
-func NewWsServer(introspector introspection.Introspector, bus event.Bus, config *WsServerConfig) (*WsServer, error) {
-	if introspector == nil || bus == nil || config == nil {
+func NewWsServer(introspector introspection.Introspector, config *WsServerConfig) (*WsServer, error) {
+	if introspector == nil || config == nil {
 		return nil, errors.New("none of introspector, event-bus OR config can be nil")
 	}
 	mux := http.NewServeMux()
@@ -132,19 +131,13 @@ func NewWsServer(introspector introspection.Introspector, bus event.Bus, config 
 	}
 	srv.ctx, srv.cancel = context.WithCancel(context.Background())
 
-	sub, err := bus.Subscribe(event.WildcardSubscriptionType, eventbus.BufSize(256))
-	if err != nil {
-		return nil, fmt.Errorf("failed to susbcribe for events with WildcardSubscriptionType")
-	}
-	srv.eventSub = sub
-
 	// register introspection handler
 	mux.HandleFunc("/introspect", srv.wsUpgrader())
 	return srv, nil
 }
 
 // Start starts this WS server.
-func (s *WsServer) Start() error {
+func (s *WsServer) Start(bus event.Bus) error {
 	s.lk.Lock()
 	defer s.lk.Unlock()
 
@@ -155,6 +148,12 @@ func (s *WsServer) Start() error {
 	if len(s.config.ListenAddrs) == 0 {
 		return errors.New("failed to start WS server: no listen addresses supplied")
 	}
+
+	sub, err := bus.Subscribe(event.WildcardSubscriptionType, eventbus.BufSize(256))
+	if err != nil {
+		return fmt.Errorf("failed to susbcribe for events with WildcardSubscriptionType")
+	}
+	s.eventSub = sub
 
 	logger.Infof("WS introspection server starting, listening on %s", s.config.ListenAddrs)
 

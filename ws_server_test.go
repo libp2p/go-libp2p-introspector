@@ -49,16 +49,16 @@ func TestIntrospectionServer(t *testing.T) {
 			config := &WsServerConfig{
 				ListenAddrs: addrs,
 			}
-			server, err := NewWsServer(introspector, eventbus.NewBus(), config)
+			server, err := NewWsServer(introspector, config)
 			if err != nil {
 				t.Fatalf("failed to construct ws server: %s", err)
 			}
 
-			if err := server.Start(); err != nil {
+			if err := server.Start(eventbus.NewBus()); err != nil {
 				t.Fatalf("failed to start ws server: %s", err)
 			}
 
-			if err := server.Start(); err == nil {
+			if err := server.Start(eventbus.NewBus()); err == nil {
 				t.Fatalf("expected to fail when starting server twice")
 			}
 
@@ -106,11 +106,11 @@ func TestBroadcast(t *testing.T) {
 	config := &WsServerConfig{
 		ListenAddrs: []string{addr},
 	}
-	server, err := NewWsServer(introspector, eventbus.NewBus(), config)
+	server, err := NewWsServer(introspector, config)
 	require.NoError(t, err)
 
 	// start the server
-	require.NoError(t, server.Start())
+	require.NoError(t, server.Start(eventbus.NewBus()))
 	defer func() {
 		err := server.Close()
 		require.NoError(t, err)
@@ -204,11 +204,11 @@ func TestEventsBroadcast(t *testing.T) {
 	config := &WsServerConfig{
 		ListenAddrs: []string{addr},
 	}
-	server, err := NewWsServer(introspector, bus, config)
+	server, err := NewWsServer(introspector, config)
 	require.NoError(t, err)
 
 	// start the server
-	require.NoError(t, server.Start())
+	require.NoError(t, server.Start(bus))
 	defer func() {
 		err := server.Close()
 		require.NoError(t, err)
@@ -326,11 +326,11 @@ func TestRuntimeAndEvent(t *testing.T) {
 	config := &WsServerConfig{
 		ListenAddrs: []string{addr},
 	}
-	server, err := NewWsServer(introspector, bus, config)
+	server, err := NewWsServer(introspector, config)
 	require.NoError(t, err)
 
 	// start the server
-	require.NoError(t, server.Start())
+	require.NoError(t, server.Start(bus))
 	defer func() {
 		err := server.Close()
 		require.NoError(t, err)
@@ -443,11 +443,11 @@ func TestEventMessageHasProperties(t *testing.T) {
 	config := &WsServerConfig{
 		ListenAddrs: []string{addr},
 	}
-	server, err := NewWsServer(introspector, bus, config)
+	server, err := NewWsServer(introspector, config)
 	require.NoError(t, err)
 
 	// start the server
-	require.NoError(t, server.Start())
+	require.NoError(t, server.Start(bus))
 	defer func() {
 		err := server.Close()
 		require.NoError(t, err)
