@@ -26,6 +26,7 @@ import (
 )
 
 var (
+	jsType     = reflect.TypeOf(new(event.JSString)).Elem()
 	peerIdType = reflect.TypeOf(new(peer.ID)).Elem()
 	timeType   = reflect.TypeOf(new(time.Time)).Elem()
 	maddrType  = reflect.TypeOf(new(multiaddr.Multiaddr)).Elem()
@@ -506,6 +507,8 @@ func getEventProperties(evt interface{}) (*introspection_pb.EventType, error) {
 		}
 
 		switch fldType {
+		case jsType:
+			prop.Type = introspection_pb.EventType_EventProperty_JSON
 		case peerIdType:
 			prop.Type = introspection_pb.EventType_EventProperty_PEERID
 		case maddrType:

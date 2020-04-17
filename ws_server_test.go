@@ -600,6 +600,8 @@ func TestGetEventProps(t *testing.T) {
 
 		fallback  connHandler
 		fallbacks []connHandler
+
+		x event.JSString
 	}
 
 	prop, err := getEventProperties(EventA{})
@@ -616,7 +618,7 @@ func TestGetEventProps(t *testing.T) {
 		nameType[p.Name] = *p2
 	}
 
-	require.Len(t, nameType, 12)
+	require.Len(t, nameType, 13)
 
 	pidN := nameType["pid"]
 	require.Equal(t, introspection_pb.EventType_EventProperty_PEERID, pidN.Type)
@@ -657,4 +659,7 @@ func TestGetEventProps(t *testing.T) {
 	cns := nameType["fallbacks"]
 	require.Equal(t, introspection_pb.EventType_EventProperty_JSON, cns.Type)
 	require.True(t, cns.HasMultiple)
+
+	js := nameType["x"]
+	require.Equal(t, introspection_pb.EventType_EventProperty_JSON, js.Type)
 }
