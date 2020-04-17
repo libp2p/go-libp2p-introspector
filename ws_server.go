@@ -2,10 +2,12 @@ package introspector
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/libp2p/go-eventbus"
+	"hash/fnv"
 
 	"net"
 	"net/http"
@@ -407,7 +409,7 @@ func (sv *WsServer) broadcastEvent(evt interface{}) error {
 
 	ts, _ := types.TimestampProto(time.Now())
 
-	rtMsg := &introspection_pb.ProtocolDataPacket{
+	evtMessage := &introspection_pb.ProtocolDataPacket{
 		Version: introspection.ProtoVersionPb,
 		Message: &introspection_pb.ProtocolDataPacket_Event{
 			Event: &introspection_pb.Event{
@@ -418,12 +420,17 @@ func (sv *WsServer) broadcastEvent(evt interface{}) error {
 		},
 	}
 
-	bz, err := proto.Marshal(rtMsg)
+	bz, err := proto.Marshal(evtMessage)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event proto, err=%s", err)
 	}
 
-	sv.broadcast(bz)
+	cbz, err := checkSumedMessageForClient(bz)
+	if err != nil {
+		return fmt.Errorf("failed to generate checksumed event message, err=%s", err)
+	}
+
+	sv.broadcast(cbz)
 	return nil
 }
 
@@ -453,7 +460,7 @@ func (sv *WsServer) fetchStateBinary() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal state proto to bianry, err=%s", err)
 	}
-	return bz, nil
+	return checkSumedMessageForClient(bz)
 }
 
 func (sv *WsServer) fetchRuntimeBinary() ([]byte, error) {
@@ -480,6 +487,26 @@ func (sv *WsServer) fetchRuntimeBinary() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal runtime proto to binary, err=%s", err)
 	}
+	return checkSumedMessageForClient(bz)
+}
+
+func checkSumedMessageForClient(protoMsg []byte) ([]byte, error) {
+	bz := make([]byte, 12+len(protoMsg))
+
+	f := fnv.New32a()
+	n, err := f.Write(protoMsg)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating fnc hash digest, err=%s", err)
+	}
+	if n != len(protoMsg) {
+		return nil, fmt.Errorf("failed to write all bytes of the proto message to the hash digest")
+	}
+
+	binary.LittleEndian.PutUint32(bz[0:4], introspection.ProtoVersion)
+	binary.LittleEndian.PutUint32(bz[4:8], f.Sum32())
+	binary.LittleEndian.PutUint32(bz[8:12], uint32(len(protoMsg)))
+	copy(bz[12:], protoMsg)
+
 	return bz, nil
 }
 

@@ -1,10 +1,13 @@
 package introspector
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"golang.org/x/net/context"
+	"hash/fnv"
 	"net"
 	"reflect"
 	"strconv"
@@ -565,8 +568,23 @@ func fetchProtocolWrapper(t *testing.T, conn *websocket.Conn) (*introspection_pb
 		return nil, err
 	}
 
+	// get the message
+	version := msg[0:4]
+	checkSum := msg[4:8]
+	lenth := msg[8:12]
+	protoMsg := msg[12:]
+
+	require.EqualValues(t, len(protoMsg), binary.LittleEndian.Uint32(lenth))
+	require.EqualValues(t, introspection.ProtoVersion, binary.LittleEndian.Uint32(version))
+
+	h := fnv.New32a()
+	_, err = h.Write(protoMsg)
+	require.NoError(t, err)
+	require.EqualValues(t, h.Sum32(), binary.LittleEndian.Uint32(checkSum))
+
 	pd := &introspection_pb.ProtocolDataPacket{}
-	if err := proto.Unmarshal(msg, pd); err != nil {
+	// read the protocol message directly
+	if err := proto.Unmarshal(protoMsg, pd); err != nil {
 		return nil, err
 	}
 
@@ -662,4 +680,35 @@ func TestGetEventProps(t *testing.T) {
 
 	js := nameType["x"]
 	require.Equal(t, introspection_pb.EventType_EventProperty_JSON, js.Type)
+}
+
+func TestCheckedSumMessage(t *testing.T) {
+	cl := &introspection_pb.ClientSignal{Signal: introspection_pb.ClientSignal_PAUSE_PUSH_EMITTER}
+	bz, err := proto.Marshal(cl)
+	require.NoError(t, err)
+
+	cbz, err := checkSumedMessageForClient(bz)
+	require.NoError(t, err)
+	require.Len(t, cbz, 12+len(bz))
+
+	fmt.Println(hex.EncodeToString(cbz))
+
+	// version
+	require.EqualValues(t, introspection.ProtoVersion, binary.LittleEndian.Uint32(cbz[0:4]))
+
+	// message
+	messageBz := cbz[12:]
+	require.Len(t, messageBz, len(bz))
+	cl2 := &introspection_pb.ClientSignal{}
+	require.NoError(t, proto.Unmarshal(messageBz, cl2))
+	require.Equal(t, cl, cl2)
+
+	// checksum
+	h := fnv.New32a()
+	_, err = h.Write(messageBz)
+	require.NoError(t, err)
+	require.EqualValues(t, h.Sum32(), binary.LittleEndian.Uint32(cbz[4:8]))
+
+	// length
+	require.EqualValues(t, len(bz), binary.LittleEndian.Uint32(cbz[8:12]))
 }
