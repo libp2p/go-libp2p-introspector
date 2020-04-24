@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/libp2p/go-eventbus"
 	"hash/fnv"
-
 	"net"
 	"net/http"
 	"reflect"
@@ -21,9 +19,9 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/gogo/protobuf/types"
 	"github.com/gorilla/websocket"
 	logging "github.com/ipfs/go-log"
+	"github.com/libp2p/go-eventbus"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -407,14 +405,12 @@ func (sv *WsServer) broadcastEvent(evt interface{}) error {
 		sv.knownEvtProps[key] = *evtType
 	}
 
-	ts, _ := types.TimestampProto(time.Now())
-
 	evtMessage := &introspection_pb.ProtocolDataPacket{
 		Version: introspection.ProtoVersionPb,
 		Message: &introspection_pb.ProtocolDataPacket_Event{
 			Event: &introspection_pb.Event{
 				Type:    evtType,
-				Ts:      ts,
+				Ts:      timeToUnixMillis(time.Now()),
 				Content: string(js),
 			},
 		},

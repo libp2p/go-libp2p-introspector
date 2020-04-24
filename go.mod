@@ -9,7 +9,7 @@ require (
 	github.com/imdario/mergo v0.3.8
 	github.com/ipfs/go-log v1.0.1
 	github.com/libp2p/go-eventbus v0.1.1-0.20200417061519-63254f6c0da4
-	github.com/libp2p/go-libp2p-core v0.5.2-0.20200417081628-b224967ed43f
+	github.com/libp2p/go-libp2p-core v0.5.2-0.20200424084047-616e011e7e9d
 	github.com/multiformats/go-multiaddr v0.2.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/stretchr/testify v1.4.0

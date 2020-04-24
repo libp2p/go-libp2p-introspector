@@ -8,7 +8,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/introspection"
 	introspection_pb "github.com/libp2p/go-libp2p-core/introspection/pb"
 
-	"github.com/gogo/protobuf/types"
 	"github.com/imdario/mergo"
 )
 
@@ -19,10 +18,12 @@ var _ introspection.Introspector = (*DefaultIntrospector)(nil)
 type DefaultIntrospector struct {
 	treeMu sync.RWMutex
 	tree   *introspection.DataProviders
+
+	snapshotStartTime time.Time
 }
 
 func NewDefaultIntrospector() *DefaultIntrospector {
-	return &DefaultIntrospector{tree: &introspection.DataProviders{}}
+	return &DefaultIntrospector{tree: &introspection.DataProviders{}, snapshotStartTime: time.Now()}
 }
 
 func (d *DefaultIntrospector) RegisterDataProviders(provs *introspection.DataProviders) error {
@@ -53,12 +54,13 @@ func (d *DefaultIntrospector) FetchFullState() (*introspection_pb.State, error) 
 
 	s := &introspection_pb.State{}
 
+	// timestamps
+	s.StartTs = timeToUnixMillis(d.snapshotStartTime)
+	s.InstantTs = timeToUnixMillis(time.Now())
+	d.snapshotStartTime = time.Now()
+
 	// subsystems
 	s.Subsystems = &introspection_pb.Subsystems{}
-
-	// timestamps
-	s.InstantTs = &types.Timestamp{Seconds: time.Now().Unix()}
-	// TODO Figure out the other two timestamp fields
 
 	// connections
 	if d.tree.Connection != nil {
@@ -94,4 +96,8 @@ func (d *DefaultIntrospector) FetchFullState() (*introspection_pb.State, error) 
 	}
 
 	return s, nil
+}
+
+func timeToUnixMillis(t time.Time) uint64 {
+	return uint64(t.UnixNano() / 1000000)
 }
