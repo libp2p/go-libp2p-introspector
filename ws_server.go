@@ -223,7 +223,7 @@ func (s *WsServer) ListenAddrs() []string {
 	return res
 }
 
-func (sv *WsServer) wsUpgrader() http.HandlerFunc {
+func (s *WsServer) wsUpgrader() http.HandlerFunc {
 	return func(w http.ResponseWriter, rq *http.Request) {
 		upgrader.CheckOrigin = func(rq *http.Request) bool { return true }
 		wsConn, err := upgrader.Upgrade(w, rq, nil)
@@ -234,94 +234,94 @@ func (sv *WsServer) wsUpgrader() http.HandlerFunc {
 
 		done := make(chan struct{}, 1)
 		select {
-		case sv.newConnCh <- &newConnReq{wsConn, done}:
-		case <-sv.ctx.Done():
+		case s.newConnCh <- &newConnReq{wsConn, done}:
+		case <-s.ctx.Done():
 			wsConn.Close()
 			return
 		}
 
 		select {
 		case <-done:
-		case <-sv.ctx.Done():
+		case <-s.ctx.Done():
 			wsConn.Close()
 			return
 		}
 	}
 }
 
-func (sv *WsServer) eventLoop() {
+func (s *WsServer) eventLoop() {
 	var stateMessageTimer *time.Timer
 	var stateTimerCh <-chan time.Time
 	stMsgTmrRunning := false
 
-	eventSubCh := sv.eventSub.Out()
+	eventSubCh := s.eventSub.Out()
 
 	defer func() {
 		if stMsgTmrRunning && !stateMessageTimer.Stop() {
 			<-stateMessageTimer.C
 		}
-		sv.closeWg.Done()
+		s.closeWg.Done()
 	}()
 
 	for {
 		select {
 		case <-stateTimerCh:
-			stateBz, err := sv.fetchStateBinary()
+			stateBz, err := s.fetchStateBinary()
 			if err != nil {
 				logger.Errorf("failed to fetch state bytes for periodic push, err=%s", err)
 				continue
 			}
-			sv.broadcast(stateBz)
+			s.broadcast(stateBz)
 			stateMessageTimer.Reset(stateMsgPeriod)
 
-		case req := <-sv.connStateChangeReqCh:
-			currState := sv.connHandlerStates[req.ch]
-			sv.connHandlerStates[req.ch] = req.newState
+		case req := <-s.connStateChangeReqCh:
+			currState := s.connHandlerStates[req.ch]
+			s.connHandlerStates[req.ch] = req.newState
 
 			if currState == paused && req.newState == running {
-				sv.sendRuntimeMessage(req.ch)
-				sv.sendStateMessage(req.ch)
+				s.sendRuntimeMessage(req.ch)
+				s.sendStateMessage(req.ch)
 			}
 
-		case sendDataReq := <-sv.sendDataCh:
+		case sendDataReq := <-s.sendDataCh:
 			switch sendDataReq.dataType {
 			case introspection_pb.ClientSignal_STATE:
-				sv.sendStateMessage(sendDataReq.ch)
+				s.sendStateMessage(sendDataReq.ch)
 			case introspection_pb.ClientSignal_RUNTIME:
-				sv.sendRuntimeMessage(sendDataReq.ch)
+				s.sendRuntimeMessage(sendDataReq.ch)
 			}
 
-		case newConnReq := <-sv.newConnCh:
-			handler := newConnHandler(sv.ctx, sv, newConnReq.conn)
-			sv.connHandlerStates[handler] = running
+		case newConnReq := <-s.newConnCh:
+			handler := newConnHandler(s.ctx, s, newConnReq.conn)
+			s.connHandlerStates[handler] = running
 			// if this was the first connection, start the periodic state push
-			if len(sv.connHandlerStates) == 1 {
+			if len(s.connHandlerStates) == 1 {
 				stateMessageTimer = time.NewTimer(stateMsgPeriod)
 				stateTimerCh = stateMessageTimer.C
 				stMsgTmrRunning = true
 			}
 
 			// schedule runtime followed by state message on the connection
-			sv.sendRuntimeMessage(handler)
-			sv.sendStateMessage(handler)
+			s.sendRuntimeMessage(handler)
+			s.sendStateMessage(handler)
 
-			sv.closeWg.Add(1)
+			s.closeWg.Add(1)
 			go func() {
-				defer sv.closeWg.Done()
+				defer s.closeWg.Done()
 				handler.run()
 				select {
-				case sv.closeConnCh <- &closeConnReq{handler, newConnReq.done}:
-				case <-sv.ctx.Done():
+				case s.closeConnCh <- &closeConnReq{handler, newConnReq.done}:
+				case <-s.ctx.Done():
 					return
 				}
 			}()
 
-		case closeReq := <-sv.closeConnCh:
+		case closeReq := <-s.closeConnCh:
 			closeReq.ch.conn.Close()
-			delete(sv.connHandlerStates, closeReq.ch)
+			delete(s.connHandlerStates, closeReq.ch)
 
 			// shut down the periodic state push
-			if len(sv.connHandlerStates) == 0 {
+			if len(s.connHandlerStates) == 0 {
 				// stop periodic state push
 				if stMsgTmrRunning && !stateMessageTimer.Stop() {
 					<-stateMessageTimer.C
@@ -338,27 +338,27 @@ func (sv *WsServer) eventLoop() {
 				eventSubCh = nil
 				continue
 			}
-			if len(sv.connHandlerStates) == 0 {
+			if len(s.connHandlerStates) == 0 {
 				continue
 			}
 
 			// will only send the name property if we've seen the event before, otherwise
 			// will send props for all fields
-			if err := sv.broadcastEvent(evt); err != nil {
+			if err := s.broadcastEvent(evt); err != nil {
 				logger.Errorf("error while broadcasting event, err=%s", err)
 			}
 
-		case fnc := <-sv.evalForTest:
+		case fnc := <-s.evalForTest:
 			fnc()
 
-		case <-sv.ctx.Done():
+		case <-s.ctx.Done():
 			return
 		}
 	}
 
 }
 
-func (sv *WsServer) sendMessageToConn(ch *connHandler, msg []byte) {
+func (s *WsServer) sendMessageToConn(ch *connHandler, msg []byte) {
 	select {
 	case ch.outgoingChan <- msg:
 	default:
@@ -366,25 +366,25 @@ func (sv *WsServer) sendMessageToConn(ch *connHandler, msg []byte) {
 	}
 }
 
-func (sv *WsServer) sendRuntimeMessage(ch *connHandler) {
-	rt, err := sv.fetchRuntimeBinary()
+func (s *WsServer) sendRuntimeMessage(ch *connHandler) {
+	rt, err := s.fetchRuntimeBinary()
 	if err != nil {
 		logger.Errorf("failed to fetch runtime message, err=%s", err)
 	} else {
-		sv.sendMessageToConn(ch, rt)
+		s.sendMessageToConn(ch, rt)
 	}
 }
 
-func (sv *WsServer) sendStateMessage(ch *connHandler) {
-	st, err := sv.fetchStateBinary()
+func (s *WsServer) sendStateMessage(ch *connHandler) {
+	st, err := s.fetchStateBinary()
 	if err != nil {
 		logger.Errorf("failed to fetch full state, err=%s", err)
 	} else {
-		sv.sendMessageToConn(ch, st)
+		s.sendMessageToConn(ch, st)
 	}
 }
 
-func (sv *WsServer) broadcastEvent(evt interface{}) error {
+func (s *WsServer) broadcastEvent(evt interface{}) error {
 	js, err := json.Marshal(evt)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event to json, err=%s", err)
@@ -392,17 +392,17 @@ func (sv *WsServer) broadcastEvent(evt interface{}) error {
 
 	key := reflect.TypeOf(evt)
 	var evtType *introspection_pb.EventType
-	_, ok := sv.knownEvtProps[key]
+	_, ok := s.knownEvtProps[key]
 	if ok {
 		// just send the name if we've already seen the event before
-		evtType = &introspection_pb.EventType{Name: sv.knownEvtProps[key].Name}
+		evtType = &introspection_pb.EventType{Name: s.knownEvtProps[key].Name}
 	} else {
 		// compute props, cache and send
 		evtType, err = getEventProperties(evt)
 		if err != nil {
 			return fmt.Errorf("failed to get properties of event, err=%s", err)
 		}
-		sv.knownEvtProps[key] = *evtType
+		s.knownEvtProps[key] = *evtType
 	}
 
 	evtMessage := &introspection_pb.ProtocolDataPacket{
@@ -426,23 +426,23 @@ func (sv *WsServer) broadcastEvent(evt interface{}) error {
 		return fmt.Errorf("failed to generate checksumed event message, err=%s", err)
 	}
 
-	sv.broadcast(cbz)
+	s.broadcast(cbz)
 	return nil
 }
 
-func (sv *WsServer) broadcast(msg []byte) {
-	for c, _ := range sv.connHandlerStates {
+func (s *WsServer) broadcast(msg []byte) {
+	for c, _ := range s.connHandlerStates {
 		ch := c
-		if sv.connHandlerStates[ch] != running {
+		if s.connHandlerStates[ch] != running {
 			continue
 		}
 
-		sv.sendMessageToConn(ch, msg)
+		s.sendMessageToConn(ch, msg)
 	}
 }
 
-func (sv *WsServer) fetchStateBinary() ([]byte, error) {
-	st, err := sv.introspector.FetchFullState()
+func (s *WsServer) fetchStateBinary() ([]byte, error) {
+	st, err := s.introspector.FetchFullState()
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch state, err=%s", err)
 	}
@@ -459,17 +459,17 @@ func (sv *WsServer) fetchStateBinary() ([]byte, error) {
 	return checkSumedMessageForClient(bz)
 }
 
-func (sv *WsServer) fetchRuntimeBinary() ([]byte, error) {
-	rt, err := sv.introspector.FetchRuntime()
+func (s *WsServer) fetchRuntimeBinary() ([]byte, error) {
+	rt, err := s.introspector.FetchRuntime()
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch runtime mesage, err=%s", err)
 	}
 	rt.SendStateIntervalMs = uint32(stateMsgPeriod.Milliseconds())
 	rt.KeepStaleDataMs = uint32(keepStaleData.Milliseconds())
 
-	evtProps := make([]*introspection_pb.EventType, 0, len(sv.knownEvtProps))
-	for k := range sv.knownEvtProps {
-		v := sv.knownEvtProps[k]
+	evtProps := make([]*introspection_pb.EventType, 0, len(s.knownEvtProps))
+	for k := range s.knownEvtProps {
+		v := s.knownEvtProps[k]
 		evtProps = append(evtProps, &v)
 	}
 	rt.EventTypes = evtProps

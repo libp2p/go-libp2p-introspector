@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/net/context"
 	"hash/fnv"
 	"net"
 	"reflect"
@@ -14,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/net/context"
 
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/introspection"
@@ -29,16 +30,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type TestEvent struct {
+type TestEvent1 struct {
 	a int
 	b int
 }
 
-type TE2 struct {
+type TestEvent2 struct {
 	m int
 }
 
-type TE3 struct {
+type TestEvent3 struct {
 	a string
 	b int
 }
@@ -139,6 +140,7 @@ func TestBroadcast(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, pd1.GetRuntime())
 		require.Nil(t, pd1.GetState())
+
 		pd2, err := fetchProtocolWrapper(t, conns[i])
 		require.NoError(t, err)
 		require.NotNil(t, pd2.GetState())
@@ -173,7 +175,7 @@ func TestBroadcast(t *testing.T) {
 		}(i)
 	}
 
-	// should get ATLEAST 3 state broadcasts on each connection in 12 seconds
+	// should get at least 3 state broadcasts on each connection in 12 seconds.
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 
@@ -194,15 +196,16 @@ func TestBroadcast(t *testing.T) {
 
 func TestEventsBroadcast(t *testing.T) {
 	bus := eventbus.NewBus()
+
 	e1, err := bus.Emitter(new(event.EvtPeerProtocolsUpdated))
 	require.NoError(t, err)
+
 	e2, err := bus.Emitter(new(event.EvtPeerIdentificationCompleted))
 	require.NoError(t, err)
 
 	nConns := 3
 	addr := "localhost:9999"
 	// create a ws server
-
 	introspector := NewDefaultIntrospector()
 	config := &WsServerConfig{
 		ListenAddrs: []string{addr},
@@ -238,6 +241,7 @@ func TestEventsBroadcast(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, pd1.GetRuntime())
 		require.Nil(t, pd1.GetState())
+
 		pd2, err := fetchProtocolWrapper(t, conns[i])
 		require.NoError(t, err)
 		require.NotNil(t, pd2.GetState())
@@ -246,9 +250,12 @@ func TestEventsBroadcast(t *testing.T) {
 
 	// emit two event and see them on all handlers
 	pid := test.RandPeerIDFatal(t)
-	ev1 := event.EvtPeerProtocolsUpdated{Peer: pid, Added: []protocol.ID{"P1"},
-		Removed: []protocol.ID{"P2"}}
-	ev2 := event.EvtPeerIdentificationCompleted{pid}
+	ev1 := event.EvtPeerProtocolsUpdated{
+		Peer:    pid,
+		Added:   []protocol.ID{"P1"},
+		Removed: []protocol.ID{"P2"},
+	}
+	ev2 := event.EvtPeerIdentificationCompleted{Peer: pid}
 	require.NoError(t, e1.Emit(ev1))
 	require.NoError(t, e2.Emit(ev2))
 
@@ -320,7 +327,7 @@ func TestEventsBroadcast(t *testing.T) {
 
 func TestRuntimeAndEvent(t *testing.T) {
 	bus := eventbus.NewBus()
-	em1, err := bus.Emitter(new(TestEvent))
+	em1, err := bus.Emitter(new(TestEvent1))
 	require.NoError(t, err)
 
 	addr := "localhost:9999"
@@ -354,13 +361,14 @@ func TestRuntimeAndEvent(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, pd1.GetRuntime())
 	require.Nil(t, pd1.GetState())
+
 	pd2, err := fetchProtocolWrapper(t, conn)
 	require.NoError(t, err)
 	require.NotNil(t, pd2.GetState())
 	require.Nil(t, pd2.GetRuntime())
 
 	// emit event
-	em1.Emit(TestEvent{})
+	require.NoError(t, em1.Emit(TestEvent1{}))
 
 	// assert event state
 	require.Eventually(t, func() bool {
@@ -373,7 +381,7 @@ func TestRuntimeAndEvent(t *testing.T) {
 		}
 		<-done
 
-		_, ok := tk[reflect.TypeOf(new(TestEvent)).Elem()]
+		_, ok := tk[reflect.TypeOf(new(TestEvent1)).Elem()]
 		return len(tk) == 1 && ok
 
 	}, 10*time.Second, 1*time.Second)
@@ -391,13 +399,13 @@ func TestRuntimeAndEvent(t *testing.T) {
 	}, 10*time.Second, 1*time.Second)
 
 	require.Len(t, rt.EventTypes, 1)
-	require.Equal(t, reflect.TypeOf(new(TestEvent)).Elem().Name(), rt.EventTypes[0].Name)
+	require.Equal(t, reflect.TypeOf(new(TestEvent1)).Elem().Name(), rt.EventTypes[0].Name)
 
 	// and emitting a new event gets us the actual information
 	var evt2 *introspection_pb.Event
-	em2, err := bus.Emitter(new(TE2))
+	em2, err := bus.Emitter(new(TestEvent2))
 	require.NoError(t, err)
-	require.NoError(t, em2.Emit(TE2{}))
+	require.NoError(t, em2.Emit(TestEvent2{}))
 	require.Eventually(t, func() bool {
 		pd1, err := fetchProtocolWrapper(t, conn2)
 		evt2 = pd1.GetEvent()
@@ -405,12 +413,12 @@ func TestRuntimeAndEvent(t *testing.T) {
 	}, 10*time.Second, 1*time.Second)
 
 	require.Len(t, evt2.Type.PropertyTypes, 1)
-	require.Equal(t, reflect.TypeOf(new(TE2)).Elem().Name(), evt2.Type.Name)
+	require.Equal(t, reflect.TypeOf(new(TestEvent2)).Elem().Name(), evt2.Type.Name)
 
 	// emit another event and wait for it
-	em3, err := bus.Emitter(new(TE3))
+	em3, err := bus.Emitter(new(TestEvent3))
 	require.NoError(t, err)
-	require.NoError(t, em3.Emit(TE3{}))
+	require.NoError(t, em3.Emit(TestEvent3{}))
 	require.Eventually(t, func() bool {
 		pd1, err := fetchProtocolWrapper(t, conn2)
 		evt2 = pd1.GetEvent()
@@ -437,11 +445,10 @@ func TestRuntimeAndEvent(t *testing.T) {
 }
 
 func TestEventMessageHasProperties(t *testing.T) {
-
 	bus := eventbus.NewBus()
-	addr := "localhost:9999"
-	// create a ws server
 
+	// create a ws server
+	addr := "localhost:9999"
 	introspector := NewDefaultIntrospector()
 	config := &WsServerConfig{
 		ListenAddrs: []string{addr},
@@ -466,63 +473,66 @@ func TestEventMessageHasProperties(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, pd1.GetRuntime())
 	require.Nil(t, pd1.GetState())
+
 	pd2, err := fetchProtocolWrapper(t, conn)
 	require.NoError(t, err)
 	require.NotNil(t, pd2.GetState())
 	require.Nil(t, pd2.GetRuntime())
 
 	// first event has eventype
-	e1, err := bus.Emitter(new(TestEvent))
+	e1, err := bus.Emitter(new(TestEvent1))
 	require.NoError(t, err)
-	require.NoError(t, e1.Emit(TestEvent{}))
+	require.NoError(t, e1.Emit(TestEvent1{}))
+
 	pd, err := fetchProtocolWrapper(t, conn)
 	require.NoError(t, err)
 	require.Nil(t, pd.GetRuntime())
 	require.Nil(t, pd.GetState())
+
 	evt := pd.GetEvent()
 	require.NotNil(t, evt)
-	require.Equal(t, reflect.TypeOf(new(TestEvent)).Elem().Name(),
-		evt.Type.Name)
+	require.Equal(t, reflect.TypeOf(new(TestEvent1)).Elem().Name(), evt.Type.Name)
 	require.NotEmpty(t, evt.Type.PropertyTypes)
 	require.Len(t, evt.Type.PropertyTypes, 2)
 
 	// second ONLY has name
-	require.NoError(t, e1.Emit(TestEvent{}))
+	require.NoError(t, e1.Emit(TestEvent1{}))
 	pd, err = fetchProtocolWrapper(t, conn)
 	require.NoError(t, err)
 	require.Nil(t, pd.GetRuntime())
 	require.Nil(t, pd.GetState())
+
 	evt = pd.GetEvent()
 	require.NotNil(t, evt)
-	require.Equal(t, reflect.TypeOf(new(TestEvent)).Elem().Name(),
-		evt.Type.Name)
+	require.Equal(t, reflect.TypeOf(new(TestEvent1)).Elem().Name(), evt.Type.Name)
 	require.Empty(t, evt.Type.PropertyTypes)
 
 	// first event has eventype
-	e2, err := bus.Emitter(new(TE2))
+	e2, err := bus.Emitter(new(TestEvent2))
 	require.NoError(t, err)
-	require.NoError(t, e2.Emit(TE2{}))
+	require.NoError(t, e2.Emit(TestEvent2{}))
+
 	pd, err = fetchProtocolWrapper(t, conn)
 	require.NoError(t, err)
 	require.Nil(t, pd.GetRuntime())
 	require.Nil(t, pd.GetState())
+
 	evt = pd.GetEvent()
 	require.NotNil(t, evt)
-	require.Equal(t, reflect.TypeOf(new(TE2)).Elem().Name(),
-		evt.Type.Name)
+	require.Equal(t, reflect.TypeOf(new(TestEvent2)).Elem().Name(), evt.Type.Name)
 	require.NotEmpty(t, evt.Type.PropertyTypes)
 	require.Len(t, evt.Type.PropertyTypes, 1)
 
 	// second ONLY has name
-	require.NoError(t, e2.Emit(TE2{}))
+	require.NoError(t, e2.Emit(TestEvent2{}))
 	pd, err = fetchProtocolWrapper(t, conn)
 	require.NoError(t, err)
 	require.Nil(t, pd.GetRuntime())
 	require.Nil(t, pd.GetState())
+
 	evt = pd.GetEvent()
 	require.NotNil(t, evt)
-	require.Equal(t, reflect.TypeOf(new(TE2)).Elem().Name(),
-		evt.Type.Name)
+	require.Equal(t, reflect.TypeOf(new(TestEvent2)).Elem().Name(), evt.Type.Name)
 	require.Empty(t, evt.Type.PropertyTypes)
 
 	// assert internal state
@@ -535,9 +545,9 @@ func TestEventMessageHasProperties(t *testing.T) {
 	<-done
 
 	require.Len(t, tmap, 2)
-	t1 := tmap[reflect.TypeOf(new(TestEvent)).Elem()]
+	t1 := tmap[reflect.TypeOf(new(TestEvent1)).Elem()]
 	require.Len(t, t1.PropertyTypes, 2)
-	t2 := tmap[reflect.TypeOf(new(TE2)).Elem()]
+	t2 := tmap[reflect.TypeOf(new(TestEvent2)).Elem()]
 	require.Len(t, t2.PropertyTypes, 1)
 }
 
@@ -568,33 +578,31 @@ func fetchProtocolWrapper(t *testing.T, conn *websocket.Conn) (*introspection_pb
 		return nil, err
 	}
 
-	// get the message
-	version := msg[0:4]
-	checkSum := msg[4:8]
-	lenth := msg[8:12]
-	protoMsg := msg[12:]
+	var (
+		// get the message
+		version  = msg[0:4]
+		checksum = msg[4:8]
+		length   = msg[8:12]
+		payload  = msg[12:]
+	)
 
-	require.EqualValues(t, len(protoMsg), binary.LittleEndian.Uint32(lenth))
+	require.EqualValues(t, len(payload), binary.LittleEndian.Uint32(length))
 	require.EqualValues(t, introspection.ProtoVersion, binary.LittleEndian.Uint32(version))
 
 	h := fnv.New32a()
-	_, err = h.Write(protoMsg)
+	_, err = h.Write(payload)
 	require.NoError(t, err)
-	require.EqualValues(t, h.Sum32(), binary.LittleEndian.Uint32(checkSum))
+	require.EqualValues(t, h.Sum32(), binary.LittleEndian.Uint32(checksum))
 
 	pd := &introspection_pb.ProtocolDataPacket{}
+
 	// read the protocol message directly
-	if err := proto.Unmarshal(protoMsg, pd); err != nil {
+	if err := proto.Unmarshal(payload, pd); err != nil {
 		return nil, err
 	}
 
-	if pd.Message == nil {
-		return nil, errors.New("nil message recieved from server")
-	}
-
-	if introspection.ProtoVersion != pd.Version.Version {
-		return nil, errors.New("incorrect proto version receieved from client")
-	}
+	require.NotNil(t, pd.Message, "nil message received from server")
+	require.Equal(t, introspection.ProtoVersion, pd.Version.Version, "incorrect proto version receieved from client")
 
 	return pd, nil
 }

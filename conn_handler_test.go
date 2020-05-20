@@ -13,9 +13,8 @@ import (
 )
 
 func TestConnHandlerSignalling(t *testing.T) {
-	addr := "localhost:9999"
-
 	// create a ws server
+	addr := "localhost:9999"
 	introspector := NewDefaultIntrospector()
 	config := &WsServerConfig{
 		ListenAddrs: []string{addr},
@@ -152,7 +151,7 @@ func TestConnHandlerSignalling(t *testing.T) {
 	}, 10*time.Second, 1*time.Second)
 	require.NoError(t, fetcherr)
 
-	//now send a send data
+	// now send a send data
 	sendMessage(t, &introspection_pb.ClientSignal{Signal: introspection_pb.ClientSignal_SEND_DATA, DataSource: introspection_pb.ClientSignal_STATE}, conn2)
 	require.Eventually(t, func() bool {
 		p1, err := fetchProtocolWrapper(t, conn2)
