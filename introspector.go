@@ -75,7 +75,10 @@ func (d *DefaultIntrospector) FetchFullState() (*introspection_pb.State, error) 
 					sids = append(sids, introspection.StreamID(s))
 				}
 
-				sl, err := d.tree.Stream(introspection.StreamQueryParams{introspection.QueryOutputFull, sids})
+				sl, err := d.tree.Stream(introspection.StreamQueryParams{
+					Output:  introspection.QueryOutputFull,
+					Include: sids,
+				})
 				if err != nil {
 					return nil, fmt.Errorf("failed to fetch streams for connection: %w", err)
 				}
