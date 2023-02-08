@@ -3,7 +3,7 @@ module github.com/libp2p/go-libp2p-introspector
 go 1.19
 
 require (
-	github.com/gogo/protobuf v1.3.1
+	github.com/gogo/protobuf v1.3.2
 	github.com/gorilla/websocket v1.4.1
 	github.com/imdario/mergo v0.3.8
 	github.com/ipfs/go-log v1.0.1
