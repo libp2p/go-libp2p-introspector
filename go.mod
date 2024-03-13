@@ -2,7 +2,6 @@ module github.com/libp2p/go-libp2p-introspector
 
 go 1.21
 
-
 require (
 	github.com/gogo/protobuf v1.3.1
 	github.com/gorilla/websocket v1.4.1
